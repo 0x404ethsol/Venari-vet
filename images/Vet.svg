@@ -1,6 +1,6 @@
 <svg width="290" height="144" viewBox="0 0 290 144" fill="none" xmlns="http://www.w3.org/2000/svg">
 <style>
-  .vet-text { fill: #000000; }
+  .vet-text { fill: #44443D; }
   @media (prefers-color-scheme: dark) {
     .vet-text { fill: #FFFFFF; }
   }
