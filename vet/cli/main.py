@@ -44,6 +44,7 @@ def create_parser() -> argparse.ArgumentParser:
         prog="vet",
         description="Identify issues in code changes using LLM-based analysis.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        allow_abbrev=False,
     )
 
     parser.add_argument(
@@ -349,6 +350,25 @@ def list_configs(cli_configs: dict[str, CliConfigPreset], repo_path: Path) -> No
         print()
 
 
+def _validate_staged_related_options(args: argparse.Namespace, base_commit_cli_specified: bool) -> str | None:
+    """Validate options related to staged analysis.
+
+    Returns an error message string when validation fails (caller should print
+    it to stderr and return an exit code of 2), otherwise returns None.
+    """
+    if args.staged and base_commit_cli_specified:
+        # Only treat --base-commit as conflicting if explicitly provided on the CLI.
+        # Config/default values (e.g. "main") should not trigger an error because
+        # staged mode intentionally ignores base commits.
+        return "vet: --staged and --base-commit are mutually exclusive"
+
+    if args.staged and args.agentic:
+        # Sanity check to prevent users from accidentally combining incompatible modes.
+        return "vet: --staged and --agentic are mutually exclusive"
+
+    return None
+
+
 _DEFAULT_LOG_FILE = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state")) / "vet" / "vet.log"
 
 
@@ -530,26 +550,9 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return 2
 
-    if args.staged and base_commit_cli_specified:
-        # Only treat --base-commit as conflicting if explicitly provided on the CLI.
-        # Config/default values (e.g. "main") should not trigger an error because
-        # staged mode intentionally ignores base commits.
-        print(
-            "vet: --staged and --base-commit are mutually exclusive",
-            file=sys.stderr,
-        )
-        return 2
-
-    if args.staged and args.agentic:
-        """
-        This is a sanity check to prevent users from accidentally using --agentic with --staged,
-        which would lead to confusing results since --agentic implies using an agent-based approach
-        while --staged implies comparing against only staged changes."""
-        # parser.error("Cannot specify both --staged and --agentic")
-        print(
-            "vet: --staged and --agentic are mutually exclusive",
-            file=sys.stderr,
-        )
+    staged_err = _validate_staged_related_options(args, base_commit_cli_specified)
+    if staged_err is not None:
+        print(staged_err, file=sys.stderr)
         return 2
 
     if args.verbose and args.quiet:
@@ -682,10 +685,16 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     if not args.quiet:
-        print(
-            f"analyzing {repo_path} (relative to {args.base_commit})",
-            file=sys.stderr,
-        )
+        if args.staged:
+            print(
+                f"analyzing {repo_path} (staged changes)",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"analyzing {repo_path} (relative to {args.base_commit})",
+                file=sys.stderr,
+            )
 
     try:
         issues = find_issues(
